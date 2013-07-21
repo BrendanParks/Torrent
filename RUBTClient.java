@@ -104,7 +104,7 @@ public class RUBTClient {
 		try{
 			tracker.readTrackerResponse();
 		}catch (IOException e){
-        System.out.println(e.getMessage());
+		System.out.println(e.getMessage());
 			System.out.println("Error reading from tracker URL.");
 			return;
 		}
@@ -116,7 +116,6 @@ public class RUBTClient {
 		System.out.println("\n===============END DEBUG===============\n");
 
 		String peer_ip[] = tracker.getPeer(COMPARE_IP);
-		System.exit(0);
 		Peer peer = new Peer(tor, PEER_ID, peer_ip[0]);
 		
 		if (peer.handshake()){

@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.nio.*;
+import java.security.MessageDigest;
 
 public class Peer {
 	
@@ -97,7 +98,34 @@ public class Peer {
 
 		return true;
 	}
-	
+
+	/**  Function will compute the SHA-1 hash of a piece and compare it to the SHA-1
+	  *  from the meta-info torrent file
+	  *
+	  *  @param piece The byte array of the piece which was downloaded from the peer
+	  *  @param index The index number of the piece.
+	  *  @return True if the piece matches the SHA-1 hash from the meta-info torrent file otherwise false.
+	  */
+	public boolean verifySHA(byte[] piece, int index)
+	{
+		MessageDigest digest = null;
+		try
+		{
+			digest = MessageDigest.getInstance("SHA");
+		}
+		catch(Exception e)
+		{
+			System.out.println("Bad SHA algorithm");
+			return false;
+		}
+		byte[] hash = digest.digest(piece);
+		byte[] info_hash = tor_info.piece_hashes[index].array();
+		for(int i = 0; i < hash.length; i++)
+			if (hash[i] != info_hash[i])
+				return false;
+		return true;
+	}
+
 	public boolean sendMessage(int msgType) throws Exception{
 		byte[] message = null;
 		
@@ -240,7 +268,8 @@ public class Peer {
 			byte[] block = new byte[message.length - 9];
 			System.arraycopy(message,9,block, 0, message.length - 9);
 			
-			return block;		
+			//verifyHash(block, );
+			return block;
 		}
 		
 		return null;
