@@ -119,43 +119,32 @@ public class RUBTClient {
 		Peer peer = new Peer(tor, PEER_ID, peer_ip[0]);
 		
 		if (peer.handshake()){
-			
-			
-			
 			//Bypass the bitfield in the pipeline
 			peer.receiveMessage();
 			
 			//Send interested message
-			peer.sendMessage(2);
-			
-			byte[] receipt = peer.receiveMessage();
-			
-			
-			//send interest message
+			peer.sendMessage(2, 0, 0);
+
 			//receive unchoke
-			//pull pieces			
+			byte[] receipt = peer.receiveMessage();
+
+			//pull pieces
 			BufferedOutputStream fileOutput = new BufferedOutputStream(new FileOutputStream(args[1]));
-		
-			byte[] piece = null;
-		
-			//Do not write header to block!
-			int msgsSent = 0;
-			while ((piece = peer.getPiece()) != null){
-				fileOutput.write(piece);
-				msgsSent++;
-				System.out.println("Get piece req's sent: " + msgsSent);
-				
+
+			for(int piece_index = 0; piece_index < tor.piece_hashes.length; piece_index++)
+			{
+				byte[] piece = peer.getPiece(piece_index);
+				if (piece != null)
+				{
+					fileOutput.write(piece);
+					System.out.println("Number of pieces writen: " + (piece_index + 1));
+				}
 			}
-			
-			
+
 			fileOutput.flush();
 			fileOutput.close();
-					
-			
-			
+
 		} else throw new Exception("ERROR: Bad Handshake!");
-		
-		
 
 		//Output peer pieces to file
 		peer.closeConnection();

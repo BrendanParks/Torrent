@@ -10,22 +10,27 @@ public class Peer {
 	private final String PEER_ID;
 	private final String PEER_IP;
 	private Socket peerSocket;
-	private int PIECE_SIZE;
-	private boolean inc;
-	
-	//Will be a bitfield later on
-	private int piece_half_index = 0;
-	private int piece_index = 0;
-	
+	private int BLOCK_LENGTH = 16384; // Typical block size
 	private DataOutputStream toPeer;
 	private BufferedInputStream fromPeer;
+	private int BLOCKS_PER_PIECE;
+	private int NUMBER_PIECES_IN_FILE;
+	
+	/*WILL BE TRUE if:
+	 *The piece size divided by the block size has a remainder >0.
+	 *RAMIFICATIONS: The last block downloaded will be a size other than 16384.
+	 */
+	private boolean NONDIV_BLOCKS;
 
 	public Peer(TorrentInfo t, String pid, String pip) {
 		tor_info = t;
 		PEER_ID = pid;
 		PEER_IP = pip;
-		inc = false;
-		PIECE_SIZE = t.piece_length / 2;
+		NUMBER_PIECES_IN_FILE = tor_info.piece_length;
+		BLOCKS_PER_PIECE = (NUMBER_PIECES_IN_FILE % BLOCK_LENGTH != 0) ? NUMBER_PIECES_IN_FILE / BLOCK_LENGTH + 1 : NUMBER_PIECES_IN_FILE / BLOCK_LENGTH;
+		//
+		NONDIV_BLOCKS = NUMBER_PIECES_IN_FILE % BLOCK_LENGTH != 0;
+	
 	}
 	
 	public boolean handshake() throws Exception{
@@ -126,7 +131,12 @@ public class Peer {
 		return true;
 	}
 
-	public boolean sendMessage(int msgType) throws Exception{
+	/**
+	  *
+	  * @param pidx The piece index.
+	  * @param bidx The block index.
+	  */
+	public boolean sendMessage(int msgType, int pidx, int bidx) throws Exception{
 		byte[] message = null;
 		
 		switch (msgType) {
@@ -155,14 +165,18 @@ public class Peer {
 			case 6: 
 					//request <length=13><MID=6><payload>
 					message = new byte[17];
-					int left = (!inc) ? tor_info.file_length - PIECE_SIZE*piece_half_index : tor_info.file_length - PIECE_SIZE*piece_half_index;
+					int left = (bidx + 1 == BLOCKS_PER_PIECE) ?
+									(pidx + 1 == tor_info.piece_hashes.length) ? 
+											(tor_info.file_length - NUMBER_PIECES_IN_FILE * pidx) - (BLOCK_LENGTH * (bidx + 1))
+											: NUMBER_PIECES_IN_FILE - (BLOCK_LENGTH * (bidx + 1))
+									: BLOCK_LENGTH;
 					System.out.println("BYTES LEFT: " + left);
 					
 					//If asking for more data than available, don't send msg
 					if (left <= 0)
 						return false;
 						
-					int msgSize = (left >= PIECE_SIZE) ? PIECE_SIZE : left;
+					int msgSize = (left >= BLOCK_LENGTH) ? BLOCK_LENGTH : left;
 					message[0]=0x0;
 					message[1]=0x0;
 					message[2]=0x1;
@@ -170,7 +184,7 @@ public class Peer {
 					message[4]=0x6;
 					//Index
 					ByteBuffer a = ByteBuffer.allocate(4);
-					a.putInt(piece_index);
+					a.putInt(pidx);
 					byte[] index = a.array();
 					message[5]= index[0];
 					message[6]= index[1];
@@ -178,7 +192,7 @@ public class Peer {
 					message[8]= index[3];
 					// Begin
 					a = ByteBuffer.allocate(4);
-					a.putInt((!inc) ? 0 : PIECE_SIZE);
+					a.putInt(bidx * BLOCK_LENGTH);
 					byte[] begin = a.array();	
 					message[9]= begin[0];
 					message[10]= begin[1];
@@ -192,18 +206,10 @@ public class Peer {
 					message[14]= index[1];
 					message[15]= index[2];
 					message[16]= index[3];
-					
-					if (!inc){
-						inc = true;
-					}
-					else{
-						inc = false;
-						piece_index++;
-					}
+
 					for(byte b : message)
 						System.out.print(b+" ");
 					System.out.println();
-					piece_half_index++;
 				break;
 			case 7: 
 					//piece <length=9+X><MID=7>
@@ -255,30 +261,36 @@ public class Peer {
 
 		return temp_response.toByteArray();
 	}
-	
+
 	//In future, can demand explicit pieces
-	public byte[] getPiece() throws Exception {
+	public byte[] getPiece(int piece_index) throws Exception {
 		byte[] message = null;
-		
-		
-		if (sendMessage(6)){
-			message = receiveMessage();
-			
-			System.out.println();
-			byte[] block = new byte[message.length - 9];
-			System.arraycopy(message,9,block, 0, message.length - 9);
-			
-			//verifyHash(block, );
-			return block;
+
+		for(int block_index = 0; block_index < BLOCKS_PER_PIECE; block_index++)
+		{
+			// last piece recalculate the number of blocks
+			if (piece_index + 1 == NUMBER_PIECES_IN_FILE)
+			{
+				int temp = tor_info.file_length - (NUMBER_PIECES_IN_FILE - 1) * tor_info.piece_length;
+				BLOCKS_PER_PIECE = (NUMBER_PIECES_IN_FILE % BLOCK_LENGTH != 0) ? NUMBER_PIECES_IN_FILE / BLOCK_LENGTH + 1 : NUMBER_PIECES_IN_FILE / BLOCK_LENGTH;
+			}
+			if (sendMessage(6, piece_index, block_index)){
+				message = receiveMessage();
+				
+				System.out.println();
+				byte[] block = new byte[message.length - 9];
+				System.arraycopy(message,9,block, 0, message.length - 9);
+				
+				//verifyHash(block, );
+			}
 		}
-		
 		return null;
 	}
 	
 	public void closeConnection() throws Exception {
 		
 		toPeer.close();
-		fromPeer.close();		
+		fromPeer.close();
 		peerSocket.close();
 	}
 }

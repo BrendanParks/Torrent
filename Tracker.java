@@ -147,7 +147,7 @@ import java.nio.*;
 			if (peer.split(":")[0].equals(match[0]))
 				peer_ip[0] = peer;
 			else if (peer.split(":")[0].equals(match[1]))
-                                peer_ip[1] = peer;
+								peer_ip[1] = peer;
 		System.out.println("Found peer : " + peer_ip[0] + ", " + peer_ip[1]);
 		
 		return peer_ip;
